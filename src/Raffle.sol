@@ -14,7 +14,16 @@ contract Raffle is VRFConsumerBaseV2Plus {
     /** Errors */
     error Raffle__SendMoreToEnterRaffle();
     error Raffle__TransferFailed();
+    error Raffle__NotEnoughEthSent();
+    error Raffle__RaffleNotOpen();
 
+    /** Type Declarations */
+    enum RaffleState {
+        OPEN, //0
+        CALCULATING //1
+    }
+
+    /** State Variables */
     uint16 private constant REQUEST_CONFIRMATIONS = 3;
     uint32 private constant NUM_WORDS = 1;
     uint256 private immutable i_entranceFee;
@@ -26,6 +35,7 @@ contract Raffle is VRFConsumerBaseV2Plus {
     address payable[] private s_players; // since whoever will win the lottery, we neet to send the prize, we use payable
     uint256 private s_lastTimeStamp;
     address private s_recentWinner;
+    RaffleState private s_raffleState;
 
     /** Events */
     event RaffleEntered(address indexed player);
@@ -40,16 +50,23 @@ contract Raffle is VRFConsumerBaseV2Plus {
     ) VRFConsumerBaseV2Plus(vrfCoordinator) {
         i_entranceFee = entranceFee;
         i_interval = interval;
-        s_lastTimeStamp = block.timestamp;
         i_keyHash = gasLane;
         i_subscriptionId = subscriptionId;
         i_callbackGasLimit = callbackGasLimit;
+
+        s_lastTimeStamp = block.timestamp;
+        s_raffleState = RaffleState.OPEN;
     }
 
     function enterRaffle() external payable {
         if (msg.value < i_entranceFee) {
             revert Raffle__SendMoreToEnterRaffle();
         }
+
+        if (s_raffleState != RaffleState.OPEN) {
+            revert Raffle__RaffleNotOpen();
+        }
+
         s_players.push(payable(msg.sender));
         // whenever we update something in storage, we need to create an event
         // 1. Makes migration easier
@@ -65,6 +82,8 @@ contract Raffle is VRFConsumerBaseV2Plus {
         if ((block.timestamp - s_lastTimeStamp) < i_interval) {
             revert();
         }
+        s_raffleState = RaffleState.CALCULATING;
+
         // Get our random number from Chainlink VRF
         // 1. Request RNG tx
         // 2. Get RNG tx
@@ -94,6 +113,7 @@ contract Raffle is VRFConsumerBaseV2Plus {
         uint256 indexOfWinner = randomWords[0] % s_players.length;
         address payable recentWinner = s_players[indexOfWinner];
         s_recentWinner = recentWinner;
+        s_raffleState = RaffleState.OPEN;
         (bool success, ) = recentWinner.call{value: address(this).balance}(""); // give the whole pool to the recent winner
         if (!success) {
             revert Raffle__TransferFailed();
