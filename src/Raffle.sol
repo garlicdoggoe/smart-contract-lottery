@@ -39,7 +39,7 @@ contract Raffle is VRFConsumerBaseV2Plus {
 
     /** Events */
     event RaffleEntered(address indexed player);
-    emit WinnerPicked(address indexed winner);
+    event WinnerPicked(address indexed winner);
 
     constructor(
         uint256 entranceFee,
